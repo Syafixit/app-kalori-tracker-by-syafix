@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kalori Tracker by Syafix</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    select, input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 5px;
+      background: #28a745;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button[type="submit"] {
+      background: #007bff;
+    }
+    .entry {
+      background: #e9ecef;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .entry button {
+      margin-left: 5px;
+      padding: 5px 10px;
+      background: #dc3545;
+      border: none;
+      color: white;
+      border-radius: 5px;
+    }
+    .entry button.edit {
+      background: #007bff;
+    }
+    .total, .history, .chart-container {
+      margin-top: 20px;
+      text-align: center;
+    }
+    #customFoodForm {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Kalori Tracker by Syafix</h1>
+
+    <label for="food">Pilih Makanan:</label>
+    <select id="food">
+      <option disabled selected value="">-- Sila pilih makanan --</option>
+    </select>
+
+    <label for="quantity">Kuantiti:</label>
+    <input type="number" id="quantity" min="1" value="1">
+
+    <button id="addEntryButton">Tambah ke Senarai</button>
+
+    <form id="customFoodForm">
+      <label for="customFoodName">Tambah Makanan Baru:</label>
+      <input type="text" id="customFoodName" placeholder="Nama Makanan" required>
+      <input type="number" id="customFoodCal" placeholder="Kalori (cth: 150)" required>
+      <button type="submit">+ Tambah Makanan Baru</button>
+    </form>
+
+    <div class="total" id="totalCalories">Jumlah Kalori: 0 kcal</div>
+
+    <div id="entryList"></div>
+
+    <div class="history">
+      <h3>Sejarah Harian</h3>
+      <ul id="historyList"></ul>
+    </div>
+
+    <div class="chart-container">
+      <h3>Statistik Mingguan</h3>
+      <canvas id="weeklyChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const defaultFoods = [
+      { name: "Nasi Lemak", cal: 300 },
+      { name: "Mee Goreng", cal: 250 },
+      { name: "Teh Tarik", cal: 180 },
+      { name: "Ayam Goreng", cal: 150 },
+      { name: "Sayur Campur", cal: 80 }
+    ];
+
+    let entries = [];
+    let totalCalories = 0;
+
+    function getSavedFoods() {
+      try {
+        return JSON.parse(localStorage.getItem('customFoods')) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveCustomFood(newFood) {
+      const savedFoods = getSavedFoods();
+      savedFoods.push(newFood);
+      localStorage.setItem('customFoods', JSON.stringify(savedFoods));
+    }
+
+    function populateFoodDropdown() {
+      const foodSelect = document.getElementById('food');
+      foodSelect.innerHTML = '<option disabled selected value="">-- Sila pilih makanan --</option>';
+      const allFoods = [...defaultFoods, ...getSavedFoods()];
+      allFoods.forEach(f => {
+        const option = document.createElement('option');
+        option.value = f.cal;
+        option.textContent = `${f.name} (${f.cal} kcal)`;
+        foodSelect.appendChild(option);
+      });
+    }
+
+    function addCustomFood(e) {
+      e.preventDefault();
+      const name = document.getElementById('customFoodName').value.trim();
+      const cal = parseInt(document.getElementById('customFoodCal').value);
+      if (!name || isNaN(cal)) return;
+      const newFood = { name, cal };
+      saveCustomFood(newFood);
+      populateFoodDropdown();
+      document.getElementById('customFoodForm').reset();
+      alert(`Makanan "${name}" (${cal} kcal) telah ditambah!`);
+    }
+
+    function addEntry() {
+      const foodSelect = document.getElementById('food');
+      const quantity = parseInt(document.getElementById('quantity').value);
+      const calPerUnit = parseInt(foodSelect.value);
+      const foodName = foodSelect.options[foodSelect.selectedIndex]?.text;
+      if (!foodName || isNaN(quantity) || isNaN(calPerUnit)) return;
+
+      const calories = quantity * calPerUnit;
+      const entry = { id: Date.now(), food: foodName, quantity, calPerUnit, calories };
+      entries.push(entry);
+      totalCalories += calories;
+      renderEntries();
+    }
+
+    function renderEntries() {
+      const entryList = document.getElementById('entryList');
+      entryList.innerHTML = '';
+      entries.forEach(entry => {
+        const div = document.createElement('div');
+        div.className = 'entry';
+        div.innerHTML = `
+          <span>${entry.food} x ${entry.quantity} = ${entry.calories} kcal</span>
+          <div>
+            <button class="edit" onclick="editEntry(${entry.id})">Edit</button>
+            <button onclick="deleteEntry(${entry.id})">Padam</button>
+          </div>
+        `;
+        entryList.appendChild(div);
+      });
+      document.getElementById('totalCalories').textContent = `Jumlah Kalori: ${totalCalories} kcal`;
+    }
+
+    function deleteEntry(id) {
+      const entry = entries.find(e => e.id === id);
+      if (!entry) return;
+      totalCalories -= entry.calories;
+      entries = entries.filter(e => e.id !== id);
+      renderEntries();
+    }
+
+    function editEntry(id) {
+      const entry = entries.find(e => e.id === id);
+      const newQty = prompt("Masukkan kuantiti baru:", entry.quantity);
+      if (newQty && !isNaN(newQty)) {
+        totalCalories -= entry.calories;
+        entry.quantity = parseInt(newQty);
+        entry.calories = entry.quantity * entry.calPerUnit;
+        totalCalories += entry.calories;
+        renderEntries();
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('customFoodForm').addEventListener('submit', addCustomFood);
+      document.getElementById('addEntryButton').addEventListener('click', addEntry);
+      populateFoodDropdown();
+      renderEntries();
+    });
+  </script>
+</body>
+</html>
